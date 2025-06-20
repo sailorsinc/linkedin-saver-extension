@@ -12,7 +12,7 @@
   "content_scripts": [
     {
       "matches": ["https://www.linkedin.com/in/*"],
-      "js": ["contentScript.js"],
+      "js": ["html2pdf.bundle.min.js", "contentScript.js"],
       "run_at": "document_idle"
     }
   ],

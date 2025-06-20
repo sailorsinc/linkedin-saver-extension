@@ -11,7 +11,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 });
 
-// Scraping logic (copied from popup.js)
+// Scraping logic (uses html2pdf.js for automatic PDF download)
 function scrapeAndDownloadPDF() {
   const getText = (selector) => {
     const el = document.querySelector(selector);
@@ -43,23 +43,31 @@ function scrapeAndDownloadPDF() {
     <p><strong>Location:</strong> ${location || ""}</p>
     <hr/>
     <h2>About</h2>
-    <p>${about || ""}</p>
-    <hr/>
+    <p>${about || "N/A"}</p>
     <h2>Experience</h2>
-    <ul>${experiences.map(e => `<li>${e}</li>`).join('')}</ul>
-    <hr/>
+    <ul>${experiences.map(exp => `<li>${exp}</li>`).join('')}</ul>
     <h2>Education</h2>
-    <ul>${education.map(e => `<li>${e}</li>`).join('')}</ul>
+    <ul>${education.map(edu => `<li>${edu}</li>`).join('')}</ul>
   `;
 
-  // Download as HTML file (can be changed to PDF with a library)
-  const blob = new Blob([content], { type: 'text/html' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `${name ? name.replace(/\s+/g, '_') : 'profile'}.html`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  // Create a container for html2pdf
+  const container = document.createElement('div');
+  container.innerHTML = content;
+  container.style.fontFamily = 'Arial, sans-serif';
+  container.style.padding = '40px';
+  document.body.appendChild(container);
+
+  // Use html2pdf to generate and download PDF
+  html2pdf()
+    .set({
+      margin: 0.5,
+      filename: `${name ? name.replace(/\s+/g, '_') : 'profile'}.pdf`,
+      html2canvas: { scale: 2 },
+      jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' }
+    })
+    .from(container)
+    .save()
+    .then(() => {
+      document.body.removeChild(container);
+    });
 }
