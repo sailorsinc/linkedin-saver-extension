@@ -1,0 +1,12 @@
+{
+  "manifest_version": 3,
+  "name": "LinkedIn Profile Saver",
+  "description": "Save LinkedIn profile info as JSON",
+  "version": "1.0",
+  "permissions": ["scripting", "activeTab", "downloads"],
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": "icon.png"
+  },
+  "host_permissions": ["*://www.linkedin.com/*"]
+}
