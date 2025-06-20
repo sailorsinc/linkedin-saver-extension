@@ -7,6 +7,18 @@ document.getElementById('save').addEventListener('click', () => {
   });
 });
 
+// Listen for messages from content script (floating button)
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.type === 'LINKEDIN_SAVE_RESUME') {
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      chrome.scripting.executeScript({
+        target: { tabId: tabs[0].id },
+        func: scrapeAndDownloadPDF
+      });
+    });
+  }
+});
+
 function scrapeAndDownloadPDF() {
   const getText = (selector) => {
     const el = document.querySelector(selector);

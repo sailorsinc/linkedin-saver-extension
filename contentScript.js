@@ -34,8 +34,8 @@
         btn.onmouseout = () => btn.style.background = '#0073b1';
 
         btn.onclick = function() {
-            // Send message to extension (popup/background)
-            window.postMessage({ type: 'LINKEDIN_SAVE_RESUME' }, '*');
+            // Send message to extension background/popup
+            chrome.runtime.sendMessage({ type: 'LINKEDIN_SAVE_RESUME' });
         };
 
         document.body.appendChild(btn);
