@@ -47,6 +47,39 @@
                 return Array.from(target.querySelectorAll('li')).map(li => li.innerText.trim());
             };
 
+            // Extract experience details
+            function extractExperienceDetails() {
+                const experienceSection = Array.from(document.querySelectorAll('section')).find(section =>
+                    section.innerText.trim().toLowerCase().includes('experience')
+                );
+                if (!experienceSection) return [];
+                // Each experience may be in a li or nested divs
+                const items = Array.from(experienceSection.querySelectorAll('li, .pvs-entity__path-node'));
+                return items.map(item => {
+                    // Try to extract title, company, date, location
+                    const title = item.querySelector('span[aria-hidden="true"]')?.innerText || '';
+                    const company = item.querySelector('.t-14.t-normal')?.innerText || '';
+                    const date = item.querySelector('.t-14.t-normal.t-black--light')?.innerText || '';
+                    const location = item.querySelector('.t-14.t-normal.t-black--light[aria-hidden="true"]')?.innerText || '';
+                    return { title, company, date, location };
+                }).filter(exp => exp.title || exp.company);
+            }
+
+            // Extract education details
+            function extractEducationDetails() {
+                const educationSection = Array.from(document.querySelectorAll('section')).find(section =>
+                    section.innerText.trim().toLowerCase().includes('education')
+                );
+                if (!educationSection) return [];
+                const items = Array.from(educationSection.querySelectorAll('li, .pvs-entity__path-node'));
+                return items.map(item => {
+                    const school = item.querySelector('span[aria-hidden="true"]')?.innerText || '';
+                    const degree = item.querySelector('.t-14.t-normal')?.innerText || '';
+                    const date = item.querySelector('.t-14.t-normal.t-black--light')?.innerText || '';
+                    return { school, degree, date };
+                }).filter(edu => edu.school);
+            }
+
             const name = getText('h1');
             const headline = getText('.text-body-medium.break-words');
             const location = getText('.text-body-small.inline.t-black--light.break-words');
@@ -56,8 +89,17 @@
             );
             const about = aboutSection ? aboutSection.innerText.replace(/^about/i, '').trim() : "";
 
-            const experiences = extractListItems('experience');
-            const education = extractListItems('education');
+            const experiences = extractExperienceDetails();
+            const education = extractEducationDetails();
+
+            // Format for PDF
+            const experienceHtml = experiences.length ? `<ul>${experiences.map(exp =>
+                `<li><strong>${exp.title}</strong> at ${exp.company}<br>${exp.date}${exp.location ? ' | ' + exp.location : ''}</li>`
+            ).join('')}</ul>` : '<p>N/A</p>';
+
+            const educationHtml = education.length ? `<ul>${education.map(edu =>
+                `<li><strong>${edu.school}</strong>${edu.degree ? ' - ' + edu.degree : ''}<br>${edu.date}</li>`
+            ).join('')}</ul>` : '<p>N/A</p>';
 
             const content = `
                 <h1>${name || "No Name"}</h1>
@@ -67,9 +109,9 @@
                 <h2>About</h2>
                 <p>${about || "N/A"}</p>
                 <h2>Experience</h2>
-                <ul>${experiences.map(exp => `<li>${exp}</li>`).join('')}</ul>
+                ${experienceHtml}
                 <h2>Education</h2>
-                <ul>${education.map(edu => `<li>${edu}</li>`).join('')}</ul>
+                ${educationHtml}
             `;
 
             // Create a container for html2pdf
