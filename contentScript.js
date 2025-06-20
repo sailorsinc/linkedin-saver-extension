@@ -48,32 +48,22 @@
             };
 
             // Extract experience details
+            // Robust extraction for all experience details (including nested roles and all visible text)
             function extractExperienceDetails() {
                 const experienceSection = Array.from(document.querySelectorAll('section')).find(section =>
-                    section.innerText.trim().toLowerCase().includes('experience')
+                    section.innerText.trim().toLowerCase().startsWith('experience')
                 );
                 if (!experienceSection) return [];
-                // Improved extraction for all experience details (including nested roles)
-                const items = Array.from(experienceSection.querySelectorAll('li.artdeco-list__item, li.pvs-list__item'));
-                return items.map(item => {
-                    // Company name
-                    const company = item.querySelector('img[alt]')?.getAttribute('alt') ||
-                        item.querySelector('span[aria-hidden="true"]')?.innerText || '';
-                    // Role/Title
-                    let title = '';
-                    const titleEl = item.querySelector('div[aria-label] > div > span[aria-hidden="true"]') ||
-                        item.querySelector('span[aria-hidden="true"]');
-                    if (titleEl) title = titleEl.innerText;
-                    // Dates
-                    const date = item.querySelector('.t-14.t-normal.t-black--light, .pvs-entity__caption-wrapper')?.innerText || '';
-                    // Location
-                    let location = '';
-                    const locEl = Array.from(item.querySelectorAll('span[aria-hidden="true"]')).find(span =>
-                        /india|united states|area|on-site|remote|chennai|bangalore|mumbai|new york/i.test(span.innerText)
-                    );
-                    if (locEl) location = locEl.innerText;
-                    return { title, company, date, location };
-                }).filter(exp => exp.title || exp.company);
+                // Find all direct list items or divs that represent experience entries
+                const items = experienceSection.querySelectorAll('li, .pvs-entity__path-node, .pvs-list__item');
+                return Array.from(items).map(item => {
+                    // Get all visible text, join with line breaks
+                    let text = '';
+                    // Remove buttons or menus
+                    Array.from(item.querySelectorAll('button, svg, img')).forEach(el => el.remove());
+                    text = item.innerText.trim().replace(/\n{2,}/g, '\n');
+                    return text;
+                }).filter(txt => txt.length > 0);
             }
 
             // Extract education details
@@ -105,7 +95,7 @@
 
             // Format for PDF
             const experienceHtml = experiences.length ? `<ul>${experiences.map(exp =>
-                `<li><strong>${exp.title}</strong> at ${exp.company}<br>${exp.date}${exp.location ? ' | ' + exp.location : ''}</li>`
+                `<li style='margin-bottom:16px;white-space:pre-line;'>${exp}</li>`
             ).join('')}</ul>` : '<p>N/A</p>';
 
             const educationHtml = education.length ? `<ul>${education.map(edu =>
