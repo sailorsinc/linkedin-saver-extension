@@ -57,12 +57,13 @@
                 // Find all direct list items or divs that represent experience entries
                 const items = experienceSection.querySelectorAll('li, .pvs-entity__path-node, .pvs-list__item');
                 return Array.from(items).map(item => {
-                    // Get all visible text, join with line breaks
-                    let text = '';
                     // Remove buttons or menus
                     Array.from(item.querySelectorAll('button, svg, img')).forEach(el => el.remove());
-                    text = item.innerText.trim().replace(/\n{2,}/g, '\n');
-                    return text;
+                    // Get all visible text, join with line breaks, remove duplicate lines
+                    let lines = item.innerText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+                    // Remove consecutive duplicate lines
+                    lines = lines.filter((line, idx, arr) => idx === 0 || line !== arr[idx - 1]);
+                    return lines.join('\n');
                 }).filter(txt => txt.length > 0);
             }
 
