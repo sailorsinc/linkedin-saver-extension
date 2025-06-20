@@ -53,14 +53,25 @@
                     section.innerText.trim().toLowerCase().includes('experience')
                 );
                 if (!experienceSection) return [];
-                // Each experience may be in a li or nested divs
-                const items = Array.from(experienceSection.querySelectorAll('li, .pvs-entity__path-node'));
+                // Improved extraction for all experience details (including nested roles)
+                const items = Array.from(experienceSection.querySelectorAll('li.artdeco-list__item, li.pvs-list__item'));
                 return items.map(item => {
-                    // Try to extract title, company, date, location
-                    const title = item.querySelector('span[aria-hidden="true"]')?.innerText || '';
-                    const company = item.querySelector('.t-14.t-normal')?.innerText || '';
-                    const date = item.querySelector('.t-14.t-normal.t-black--light')?.innerText || '';
-                    const location = item.querySelector('.t-14.t-normal.t-black--light[aria-hidden="true"]')?.innerText || '';
+                    // Company name
+                    const company = item.querySelector('img[alt]')?.getAttribute('alt') ||
+                        item.querySelector('span[aria-hidden="true"]')?.innerText || '';
+                    // Role/Title
+                    let title = '';
+                    const titleEl = item.querySelector('div[aria-label] > div > span[aria-hidden="true"]') ||
+                        item.querySelector('span[aria-hidden="true"]');
+                    if (titleEl) title = titleEl.innerText;
+                    // Dates
+                    const date = item.querySelector('.t-14.t-normal.t-black--light, .pvs-entity__caption-wrapper')?.innerText || '';
+                    // Location
+                    let location = '';
+                    const locEl = Array.from(item.querySelectorAll('span[aria-hidden="true"]')).find(span =>
+                        /india|united states|area|on-site|remote|chennai|bangalore|mumbai|new york/i.test(span.innerText)
+                    );
+                    if (locEl) location = locEl.innerText;
                     return { title, company, date, location };
                 }).filter(exp => exp.title || exp.company);
             }
