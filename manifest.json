@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "LinkedIn Profile Saver",
-  "description": "Save LinkedIn profile info as JSON",
+  "description": "Save your Friend's LinkedIn profile  as Resume and Refer",
   "version": "1.0",
   "permissions": ["scripting", "activeTab", "downloads"],
   "action": {

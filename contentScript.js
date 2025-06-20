@@ -1,143 +1,150 @@
-// contentScript.js
-// Injects a floating 'Save as Resume' button on LinkedIn connection profile pages
+// This script should be injected via scripting API on user click — no host permissions needed
 
-(function() {
-    // Helper: Check if current page is a LinkedIn profile (simple check)
-    function isLinkedInProfilePage() {
-        // LinkedIn profile URLs typically look like: https://www.linkedin.com/in/username/
-        return /^https:\/\/www\.linkedin\.com\/in\//.test(window.location.href);
+(async function() {
+  async function waitForLinkedInContent() {
+    // Scroll to bottom to load dynamic content
+    window.scrollTo(0, document.body.scrollHeight);
+
+    // Poll for .pvs-list__item elements (robust for experience)
+    const maxRetries = 30;
+    const interval = 500; // ms
+    let retries = 0;
+
+    while (retries < maxRetries) {
+      if (document.querySelector('.pvs-list__item')) {
+        return;
+      }
+      await new Promise(resolve => setTimeout(resolve, interval));
+      retries++;
     }
+  }
 
-    // Prevent duplicate button
-    if (document.getElementById('linkedin-save-resume-btn')) return;
-
-    if (isLinkedInProfilePage()) {
-        // Create button
-        const btn = document.createElement('button');
-        btn.id = 'linkedin-save-resume-btn';
-        btn.innerText = 'Save as Resume';
-        btn.style.position = 'fixed';
-        btn.style.top = '20px';
-        btn.style.right = '20px';
-        btn.style.zIndex = '9999';
-        btn.style.padding = '12px 20px';
-        btn.style.background = '#0073b1';
-        btn.style.color = '#fff';
-        btn.style.border = 'none';
-        btn.style.borderRadius = '6px';
-        btn.style.boxShadow = '0 2px 8px rgba(0,0,0,0.15)';
-        btn.style.fontSize = '16px';
-        btn.style.cursor = 'pointer';
-        btn.style.fontWeight = 'bold';
-        btn.style.transition = 'background 0.2s';
-        btn.onmouseover = () => btn.style.background = '#005983';
-        btn.onmouseout = () => btn.style.background = '#0073b1';
-
-        btn.onclick = function() {
-            // Scrape and generate PDF using html2pdf.js
-            const getText = (selector) => {
-                const el = document.querySelector(selector);
-                return el ? el.innerText.trim() : "";
-            };
-
-            const extractListItems = (sectionHeaderText) => {
-                const sections = Array.from(document.querySelectorAll('section'));
-                const target = sections.find(s => s.innerText.toLowerCase().includes(sectionHeaderText.toLowerCase()));
-                if (!target) return [];
-                return Array.from(target.querySelectorAll('li')).map(li => li.innerText.trim());
-            };
-
-            // Extract experience details
-            // Robust extraction for all experience details (including nested roles and all visible text)
-            function extractExperienceDetails() {
-                const experienceSection = Array.from(document.querySelectorAll('section')).find(section =>
-                    section.innerText.trim().toLowerCase().startsWith('experience')
-                );
-                if (!experienceSection) return [];
-                // Find all direct list items or divs that represent experience entries
-                const items = experienceSection.querySelectorAll('li, .pvs-entity__path-node, .pvs-list__item');
-                return Array.from(items).map(item => {
-                    // Remove buttons or menus
-                    Array.from(item.querySelectorAll('button, svg, img')).forEach(el => el.remove());
-                    // Get all visible text, join with line breaks, remove duplicate lines
-                    let lines = item.innerText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-                    // Remove consecutive duplicate lines
-                    lines = lines.filter((line, idx, arr) => idx === 0 || line !== arr[idx - 1]);
-                    return lines.join('\n');
-                }).filter(txt => txt.length > 0);
-            }
-
-            // Extract education details
-            function extractEducationDetails() {
-                const educationSection = Array.from(document.querySelectorAll('section')).find(section =>
-                    section.innerText.trim().toLowerCase().includes('education')
-                );
-                if (!educationSection) return [];
-                const items = Array.from(educationSection.querySelectorAll('li, .pvs-entity__path-node'));
-                return items.map(item => {
-                    const school = item.querySelector('span[aria-hidden="true"]')?.innerText || '';
-                    const degree = item.querySelector('.t-14.t-normal')?.innerText || '';
-                    const date = item.querySelector('.t-14.t-normal.t-black--light')?.innerText || '';
-                    return { school, degree, date };
-                }).filter(edu => edu.school);
-            }
-
-            const name = getText('h1');
-            const headline = getText('.text-body-medium.break-words');
-            const location = getText('.text-body-small.inline.t-black--light.break-words');
-
-            const aboutSection = Array.from(document.querySelectorAll('section')).find(section =>
-                section.innerText.trim().toLowerCase().startsWith("about")
-            );
-            const about = aboutSection ? aboutSection.innerText.replace(/^about/i, '').trim() : "";
-
-            const experiences = extractExperienceDetails();
-            const education = extractEducationDetails();
-
-            // Format for PDF
-            const experienceHtml = experiences.length ? `<ul>${experiences.map(exp =>
-                `<li style='margin-bottom:16px;white-space:pre-line;'>${exp}</li>`
-            ).join('')}</ul>` : '<p>N/A</p>';
-
-            const educationHtml = education.length ? `<ul>${education.map(edu =>
-                `<li><strong>${edu.school}</strong>${edu.degree ? ' - ' + edu.degree : ''}<br>${edu.date}</li>`
-            ).join('')}</ul>` : '<p>N/A</p>';
-
-            const content = `
-                <h1>${name || "No Name"}</h1>
-                <h3>${headline || ""}</h3>
-                <p><strong>Location:</strong> ${location || ""}</p>
-                <hr/>
-                <h2>About</h2>
-                <p>${about || "N/A"}</p>
-                <h2>Experience</h2>
-                ${experienceHtml}
-                <h2>Education</h2>
-                ${educationHtml}
-            `;
-
-            // Create a container for html2pdf
-            const container = document.createElement('div');
-            container.innerHTML = content;
-            container.style.fontFamily = 'Arial, sans-serif';
-            container.style.padding = '40px';
-            document.body.appendChild(container);
-
-            // Use html2pdf to generate and download PDF
-            html2pdf()
-                .set({
-                    margin: 0.5,
-                    filename: `${name ? name.replace(/\s+/g, '_') : 'profile'}.pdf`,
-                    html2canvas: { scale: 2 },
-                    jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' }
-                })
-                .from(container)
-                .save()
-                .then(() => {
-                    document.body.removeChild(container);
-                });
-        };
-
-        document.body.appendChild(btn);
+  // Simulate human-like scrolling with events
+  async function scrollPageToLoadAllContent() {
+    const scrollStep = 150;
+    const delay = 600;
+    let current = 0;
+    const max = document.body.scrollHeight;
+    while (current < max) {
+      window.scrollTo(0, current);
+      // Simulate wheel and scroll events
+      window.dispatchEvent(new Event('scroll'));
+      window.dispatchEvent(new WheelEvent('wheel', {deltaY: scrollStep}));
+      await new Promise(resolve => setTimeout(resolve, delay));
+      current += scrollStep;
     }
+    // Scroll back to top
+    window.scrollTo(0, 0);
+    window.dispatchEvent(new Event('scroll'));
+    await new Promise(resolve => setTimeout(resolve, delay));
+  }
+
+  // Prompt user to scroll manually
+  alert('Please scroll through the entire Experience section to load all entries, then click OK to save the profile as PDF.');
+
+  // await scrollPageToLoadAllContent();
+  await waitForLinkedInContent();
+
+  const getText = (selector) => {
+    const el = document.querySelector(selector);
+    return el ? el.innerText.trim() : "";
+  };
+
+  const extractExperienceDetails = () => {
+    const experienceSection = Array.from(document.querySelectorAll('section')).find(section =>
+      section.innerText.trim().toLowerCase().startsWith('experience')
+    );
+    if (!experienceSection) {
+      console.warn('No experience section found');
+      return [];
+    }
+    // Recursively find all nested divs with some text (lower threshold for debugging)
+    const allDivs = Array.from(experienceSection.querySelectorAll('div'));
+    const items = allDivs.filter(div => {
+      const text = div.innerText.trim();
+      return text.length > 10 && !div.className.includes('anchor');
+    });
+    // Log first 5 divs for debugging
+    items.slice(0, 5).forEach((div, idx) => {
+      console.log(`Div ${idx + 1} text:`, div.innerText.trim());
+    });
+    console.log('Experience nested divs with text > 10 chars:', items.length);
+    if (items.length === 0) {
+      // Fallback: extract all text from the experience section
+      const fallbackText = experienceSection.innerText.trim();
+      if (fallbackText.length > 0) {
+        return [`<div style='color:orange;'>Fallback: All experience section text:<br><pre>${fallbackText}</pre></div>`];
+      }
+      return ['<span style="color:red;">No experience entries found in nested divs or section.</span>'];
+    }
+    return items.map(item => {
+      Array.from(item.querySelectorAll('button, svg, img')).forEach(el => el.remove());
+      let lines = item.innerText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+      lines = lines.filter((line, idx, arr) => idx === 0 || line !== arr[idx - 1]);
+      return `<div style="margin-bottom:12px;white-space:pre-line;">${lines.join('\n')}</div>`;
+    });
+  };
+
+  const extractEducationDetails = () => {
+    const educationSection = Array.from(document.querySelectorAll('section')).find(section =>
+      section.innerText.trim().toLowerCase().includes('education')
+    );
+    if (!educationSection) return [];
+    const items = Array.from(educationSection.querySelectorAll('li, .pvs-entity__path-node'));
+    return items.map(item => {
+      const school = item.querySelector('span[aria-hidden="true"]')?.innerText || '';
+      const degree = item.querySelector('.t-14.t-normal')?.innerText || '';
+      const date = item.querySelector('.t-14.t-normal.t-black--light')?.innerText || '';
+      return { school, degree, date };
+    }).filter(edu => edu.school);
+  };
+
+  const name = getText('h1');
+  const headline = getText('.text-body-medium.break-words');
+  const location = getText('.text-body-small.inline.t-black--light.break-words');
+
+  const aboutSection = Array.from(document.querySelectorAll('section')).find(section =>
+    section.innerText.trim().toLowerCase().startsWith("about")
+  );
+  const about = aboutSection ? aboutSection.innerText.replace(/^about/i, '').trim() : "";
+
+  const experiences = extractExperienceDetails();
+  const experienceHtml = experiences.length ? experiences.join('') : '<p style="color:red;">No experience details found. (Check LinkedIn DOM or try again after scrolling the page.)</p>';
+
+  const education = extractEducationDetails();
+  const educationHtml = education.length ? `<ul>${education.map(edu =>
+    `<li><strong>${edu.school}</strong>${edu.degree ? ' - ' + edu.degree : ''}<br>${edu.date}</li>`
+  ).join('')}</ul>` : '<p>N/A</p>';
+
+  const content = `
+    <h1>${name || "No Name"}</h1>
+    <h3>${headline || ""}</h3>
+    <p><strong>Location:</strong> ${location || ""}</p>
+    <hr/>
+    <h2>About</h2>
+    <p>${about || "N/A"}</p>
+    <h2>Experience</h2>
+    ${experienceHtml}
+    <h2>Education</h2>
+    ${educationHtml}
+  `;
+
+  const container = document.createElement('div');
+  container.innerHTML = content;
+  container.style.fontFamily = 'Arial, sans-serif';
+  container.style.padding = '40px';
+  document.body.appendChild(container);
+
+  html2pdf()
+    .set({
+      margin: 0.5,
+      filename: `${name ? name.replace(/\s+/g, '_') : 'profile'}.pdf`,
+      html2canvas: { scale: 2 },
+      jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' }
+    })
+    .from(container)
+    .save()
+    .then(() => {
+      document.body.removeChild(container);
+    });
 })();
