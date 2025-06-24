@@ -3,19 +3,11 @@
   "name": "LinkedIn Profile Saver",
   "description": "Save your Friend's LinkedIn profile  as Resume and Refer",
   "version": "1.0",
-  "permissions": ["scripting", "activeTab", "downloads"],
+  "permissions": ["scripting", "activeTab"],
   "action": {
     "default_popup": "popup.html",
     "default_icon": "icon.png"
   },
-  "host_permissions": ["*://www.linkedin.com/*"],
-  "content_scripts": [
-    {
-      "matches": ["https://www.linkedin.com/in/*"],
-      "js": ["html2pdf.bundle.min.js", "contentScript.js"],
-      "run_at": "document_idle"
-    }
-  ],
   "background": {
     "service_worker": "background.js"
   }
