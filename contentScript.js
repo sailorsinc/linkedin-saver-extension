@@ -1,6 +1,19 @@
 // This script should be injected via scripting API on user click — no host permissions needed
 
 (async function() {
+  // Wait for DOMContentLoaded if not already loaded
+  if (document.readyState !== 'complete' && document.readyState !== 'interactive') {
+    await new Promise(resolve => document.addEventListener('DOMContentLoaded', resolve, { once: true }));
+  }
+
+  // Auto-expand all "See more" buttons
+  document.querySelectorAll('button').forEach(btn => {
+    if (btn.innerText.toLowerCase().includes('see more')) btn.click();
+  });
+
+  // Extract profile photo
+  const photoUrl = document.querySelector('.pv-top-card-profile-picture img')?.src || '';
+
   async function waitForLinkedInContent() {
     // Scroll to bottom to load dynamic content
     window.scrollTo(0, document.body.scrollHeight);
@@ -19,122 +32,214 @@
     }
   }
 
-  // Simulate human-like scrolling with events
-  async function scrollPageToLoadAllContent() {
-    const scrollStep = 150;
-    const delay = 600;
-    let current = 0;
-    const max = document.body.scrollHeight;
-    while (current < max) {
-      window.scrollTo(0, current);
-      // Simulate wheel and scroll events
-      window.dispatchEvent(new Event('scroll'));
-      window.dispatchEvent(new WheelEvent('wheel', {deltaY: scrollStep}));
-      await new Promise(resolve => setTimeout(resolve, delay));
-      current += scrollStep;
-    }
-    // Scroll back to top
-    window.scrollTo(0, 0);
-    window.dispatchEvent(new Event('scroll'));
-    await new Promise(resolve => setTimeout(resolve, delay));
-  }
-
-  // Prompt user to scroll manually
-  alert('Please scroll through the entire Experience section to load all entries, then click OK to save the profile as PDF.');
+  // Prompt user to scroll manually and wait for confirmation
+  alert(
+    'IMPORTANT: Please manually scroll through the entire LinkedIn profile, especially the Experience and Education sections, to ensure all entries are loaded. Expand any multi-role companies and click "See more" as needed. Then click OK to continue.'
+  );
 
   // await scrollPageToLoadAllContent();
   await waitForLinkedInContent();
 
+  // Debug overlay
+  const debugOverlay = document.createElement('div');
+  debugOverlay.style.position = 'fixed';
+  debugOverlay.style.top = '0';
+  debugOverlay.style.left = '0';
+  debugOverlay.style.width = '100vw';
+  debugOverlay.style.background = 'rgba(255,255,0,0.95)';
+  debugOverlay.style.color = '#222';
+  debugOverlay.style.fontSize = '16px';
+  debugOverlay.style.zIndex = 1000000;
+  debugOverlay.style.padding = '8px 16px';
+  debugOverlay.style.borderBottom = '2px solid #0073b1';
+  debugOverlay.textContent = 'LinkedIn Saver: Extracting profile...';
+  document.body.appendChild(debugOverlay);
+
+  function setDebug(msg) {
+    debugOverlay.textContent = 'LinkedIn Saver: ' + msg;
+  }
+
   const getText = (selector) => {
     const el = document.querySelector(selector);
-    return el ? el.innerText.trim() : "";
+    const val = el ? el.innerText.trim() : "";
+    setDebug(`Extracted [${selector}]: ${val ? val.slice(0, 40) : '[empty]'}`);
+    return val;
   };
 
   const extractExperienceDetails = () => {
+    // Find the Experience section
     const experienceSection = Array.from(document.querySelectorAll('section')).find(section =>
       section.innerText.trim().toLowerCase().startsWith('experience')
     );
     if (!experienceSection) {
-      console.warn('No experience section found');
+      setDebug('No experience section found');
       return [];
     }
-    // Recursively find all nested divs with some text (lower threshold for debugging)
-    const allDivs = Array.from(experienceSection.querySelectorAll('div'));
-    const items = allDivs.filter(div => {
-      const text = div.innerText.trim();
-      return text.length > 10 && !div.className.includes('anchor');
-    });
-    // Log first 5 divs for debugging
-    items.slice(0, 5).forEach((div, idx) => {
-      console.log(`Div ${idx + 1} text:`, div.innerText.trim());
-    });
-    console.log('Experience nested divs with text > 10 chars:', items.length);
-    if (items.length === 0) {
-      // Fallback: extract all text from the experience section
-      const fallbackText = experienceSection.innerText.trim();
-      if (fallbackText.length > 0) {
-        return [`<div style='color:orange;'>Fallback: All experience section text:<br><pre>${fallbackText}</pre></div>`];
+
+    // Select all deeply nested experience items
+    const allDivs = Array.from(experienceSection.querySelectorAll('.pvs-list__item'));
+    const items = allDivs.map(div => {
+      // Remove interactive elements for clean text
+      Array.from(div.querySelectorAll('button, svg, img')).forEach(el => el.remove());
+      const lines = div.innerText.split('\n').map(line => line.trim()).filter(Boolean);
+
+      // Heuristics to capture job title, company and dates, handling multi-role entries
+      let title = '', company = '', dates = '';
+      if (lines.length >= 3) {
+        [title, company, ...rest] = lines;
+        dates = rest.join(' ');
+      } else if (lines.length === 2) {
+        [title, company] = lines;
+      } else if (lines.length === 1) {
+        [title] = lines;
       }
-      return ['<span style="color:red;">No experience entries found in nested divs or section.</span>'];
-    }
-    return items.map(item => {
-      Array.from(item.querySelectorAll('button, svg, img')).forEach(el => el.remove());
-      let lines = item.innerText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-      lines = lines.filter((line, idx, arr) => idx === 0 || line !== arr[idx - 1]);
-      return `<div style="margin-bottom:12px;white-space:pre-line;">${lines.join('\n')}</div>`;
-    });
+
+      // Fallbacks: try to filter out lines that look like location or description
+      // Only keep first 3 non-empty lines as a last resort
+      if (!title && lines.length) title = lines[0];
+      if (!company && lines.length > 1) company = lines[1];
+      if (!dates && lines.length > 2) dates = lines.slice(2).join(' ');
+
+      return {
+        title: title || '',
+        company: company || '',
+        dates: dates || ''
+      };
+    }).filter(item => item.title && item.company);
+
+    setDebug(`Structured ${items.length} experience items`);
+    return items;
   };
 
   const extractEducationDetails = () => {
     const educationSection = Array.from(document.querySelectorAll('section')).find(section =>
       section.innerText.trim().toLowerCase().includes('education')
     );
-    if (!educationSection) return [];
+    if (!educationSection) {
+      setDebug('No education section found');
+      return [];
+    }
     const items = Array.from(educationSection.querySelectorAll('li, .pvs-entity__path-node'));
+    if (items.length === 0) {
+      setDebug('No education entries found in section.');
+    }
     return items.map(item => {
       const school = item.querySelector('span[aria-hidden="true"]')?.innerText || '';
       const degree = item.querySelector('.t-14.t-normal')?.innerText || '';
       const date = item.querySelector('.t-14.t-normal.t-black--light')?.innerText || '';
+      setDebug(`Education entry: ${school} ${degree}`);
       return { school, degree, date };
     }).filter(edu => edu.school);
   };
 
-  const name = getText('h1');
-  const headline = getText('.text-body-medium.break-words');
-  const location = getText('.text-body-small.inline.t-black--light.break-words');
+  let name = getText('h1');
+  let headline = getText('.text-body-medium.break-words');
+  let location = getText('.text-body-small.inline.t-black--light.break-words');
 
   const aboutSection = Array.from(document.querySelectorAll('section')).find(section =>
     section.innerText.trim().toLowerCase().startsWith("about")
   );
-  const about = aboutSection ? aboutSection.innerText.replace(/^about/i, '').trim() : "";
+  let about = aboutSection ? aboutSection.innerText.replace(/^about/i, '').trim() : "";
+  setDebug('About: ' + (about ? about.slice(0, 40) : '[empty]'));
 
-  const experiences = extractExperienceDetails();
-  const experienceHtml = experiences.length ? experiences.join('') : '<p style="color:red;">No experience details found. (Check LinkedIn DOM or try again after scrolling the page.)</p>';
+  // Remove duplicate experience entries before rendering
+  let experienceData = extractExperienceDetails();
+  let experienceHtml = experienceData.map(exp => `
+    <div style="margin-bottom: 18px; border-bottom: 1px solid #ccc; padding-bottom: 8px;">
+      <div style="display:flex; justify-content:space-between;">
+        <div style="font-weight: bold; font-size: 16px;">${exp.title}</div>
+        <div style="font-size: 13px; color: #888;">${exp.dates}</div>
+      </div>
+      <div style="color: #333;"><em>${exp.company}</em></div>
+    </div>
+  `).join('');
 
-  const education = extractEducationDetails();
-  const educationHtml = education.length ? `<ul>${education.map(edu =>
-    `<li><strong>${edu.school}</strong>${edu.degree ? ' - ' + edu.degree : ''}<br>${edu.date}</li>`
-  ).join('')}</ul>` : '<p>N/A</p>';
+  let education = extractEducationDetails();
+  let educationHtml = education.length ? education.map(edu => `
+    <div style="margin-bottom: 16px;">
+      <div style="display:flex; justify-content:space-between;">
+        <strong>${edu.school}</strong>
+        <span style="font-size:13px;color:#666;">${edu.date}</span>
+      </div>
+      ${edu.degree ? `<div>${edu.degree}</div>` : ''}
+    </div>
+  `).join('') : '<p style="color:red;">No education details found.</p>';
+
+  // Fallback: If all main fields are empty, dump the body text
+  let fallback = false;
+  if (!name && !headline && !about && !experienceHtml && !educationHtml) {
+    fallback = true;
+    setDebug('Fallback: No main fields found, dumping body text.');
+    name = 'Profile Extraction Failed';
+    headline = '';
+    about = '';
+    experienceHtml = `<pre style='color:red;'>${document.body.innerText.slice(0, 2000)}</pre>`;
+    educationHtml = '';
+  }
 
   const content = `
-    <h1>${name || "No Name"}</h1>
-    <h3>${headline || ""}</h3>
-    <p><strong>Location:</strong> ${location || ""}</p>
-    <hr/>
-    <h2>About</h2>
-    <p>${about || "N/A"}</p>
-    <h2>Experience</h2>
-    ${experienceHtml}
-    <h2>Education</h2>
-    ${educationHtml}
+  <div style="display: flex; flex-direction: row; gap: 40px; max-width: 1000px; margin: auto;">
+    <div style="flex: 1; min-width: 260px;">
+      ${photoUrl ? `<img src="${photoUrl}" alt="Profile Photo" style="width:120px;height:120px;border-radius:50%;margin-bottom:20px;">` : ''}
+      <h1 style="margin: 0 0 10px; font-size: 2rem; font-weight: bold;">${name || "No Name"}</h1>
+      <h3 style="margin: 0 0 10px; color: #444; font-weight: 500;">${headline || ""}</h3>
+      <p style="margin: 0 0 10px; color: #555;"><strong>Location:</strong> ${location || ""}</p>
+      <h2 style="margin-top: 30px; font-size: 1.3rem;">About</h2>
+      <p style="color: #333; margin-bottom: 30px;">${about || "N/A"}</p>
+    </div>
+    <div style="flex: 2; min-width: 340px;">
+      <h2 style="font-size: 1.3rem; margin-bottom: 10px;">Experience</h2>
+      ${experienceHtml || '<p style="color:red;">No experience details found.</p>'}
+      <h2 style="margin-top: 30px; font-size: 1.3rem; margin-bottom: 10px;">Education</h2>
+      ${educationHtml || '<p style="color:red;">No education details found.</p>'}
+      ${fallback ? '<div style="color:red;">[Fallback: Dumped body text]</div>' : ''}
+    </div>
+  </div>
   `;
 
   const container = document.createElement('div');
   container.innerHTML = content;
   container.style.fontFamily = 'Arial, sans-serif';
   container.style.padding = '40px';
+  container.style.border = '2px dashed #0073b1';
+  container.style.background = '#fff';
+  container.style.position = 'static';
+  container.style.maxWidth = '800px';
+  container.style.margin = '40px auto';
+  container.style.boxShadow = '0 4px 24px rgba(0,0,0,0.12)';
+  container.style.display = 'block';
   document.body.appendChild(container);
 
+  setDebug('Extraction complete. Preview shown.');
+
+  // Show a confirmation popup before generating the PDF
+  if (!confirm('Ready to save the profile as PDF?')) {
+    document.body.removeChild(container);
+    document.body.removeChild(debugOverlay);
+    return;
+  }
+
+  if (typeof html2pdf === 'undefined') {
+    alert('PDF library (html2pdf) is not loaded. Please try again.');
+    document.body.removeChild(container);
+    document.body.removeChild(debugOverlay);
+    return;
+  }
+
+  // Hide all other body children except the container
+  const originalDisplay = [];
+  Array.from(document.body.children).forEach(child => {
+    if (child !== container && child !== debugOverlay) {
+      originalDisplay.push([child, child.style.display]);
+      child.style.display = 'none';
+    }
+  });
+
+  // Force reflow
+  container.offsetHeight;
+  container.scrollIntoView({behavior: 'auto', block: 'center'});
+
+  setDebug('Generating PDF...');
   html2pdf()
     .set({
       margin: 0.5,
@@ -145,6 +250,9 @@
     .from(container)
     .save()
     .then(() => {
+      // Restore all hidden elements
+      originalDisplay.forEach(([child, display]) => { child.style.display = display; });
       document.body.removeChild(container);
+      document.body.removeChild(debugOverlay);
     });
 })();
